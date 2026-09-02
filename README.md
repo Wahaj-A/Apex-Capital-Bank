@@ -144,8 +144,6 @@ CLOUDFLARE_API_TOKEN=              # optional, for image generation
 
 See `GOOGLE_OAUTH_SETUP.md`, `CALENDAR_AGENT_SETUP.md`, `Frontend/WEATHER_FEATURE.md`, and `Frontend/CRYPTO_FEATURE.md` for feature-specific setup notes.
 
-> ⚠️ **Never commit `.env`.** It's already git-ignored — keep it that way, and rotate any key that has ever been shared or exposed.
-
 ---
 
 ## 📂 Project Structure
@@ -197,13 +195,6 @@ Final Project/
 - [ ] Automated test suite (pytest + React Testing Library)
 - [ ] Dockerized deployment
 
----
-
-## 📄 License
-
-This project is available under the MIT License — see [LICENSE](LICENSE) for details, or update to reflect your preferred license.
-
----
 
 <div align="center">
 Built with FastAPI, React, and Google Gemini.
