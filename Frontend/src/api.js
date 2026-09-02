@@ -1,13 +1,16 @@
 // Automatically use window.location.origin if hosted live via ngrok/Vercel, 
 // otherwise fall back to localhost for local development
 const getBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
       return window.location.origin;
     }
   }
-  return import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+  return 'http://127.0.0.1:8000';
 };
 
 const BASE_URL = getBaseUrl().replace(/\/+$/, '')
