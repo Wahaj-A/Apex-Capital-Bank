@@ -197,13 +197,6 @@ Final Project/
 - [ ] Automated test suite (pytest + React Testing Library)
 - [ ] Dockerized deployment
 
----
-
-## 📄 License
-
-This project is available under the MIT License — see [LICENSE](LICENSE) for details, or update to reflect your preferred license.
-
----
 
 <div align="center">
 Built with FastAPI, React, and Google Gemini.
