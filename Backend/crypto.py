@@ -8,8 +8,13 @@ providers -- CoinGecko does not impose that restriction.)
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import json
+# Cache provider responses briefly to stay well under CoinGecko's free-tier
+# rate limit. Prices are still "live" from the user's perspective at a
+# 30-second refresh cadence.
+_CACHE_TTL_SECONDS = 30
+_cache: dict[str, tuple[float, list[dict]]] = {}
 from logger import logger
-
+import time
 
 SUPPORTED_CRYPTO = {
     "Bitcoin": {"id": "bitcoin", "ticker": "BTC", "name": "Bitcoin"},
@@ -42,6 +47,11 @@ def _normalize_crypto(asset: str) -> str:
 
 
 def _request_markets(ids: list[str]) -> list[dict]:
+    cache_key = ",".join(sorted(ids))
+    cached = _cache.get(cache_key)
+    if cached and (time.monotonic() - cached[0]) < _CACHE_TTL_SECONDS:
+        return cached[1]
+
     params = urlencode({
         "vs_currency": "usd",
         "ids": ",".join(ids),
@@ -56,10 +66,13 @@ def _request_markets(ids: list[str]) -> list[dict]:
         logger.info("CRYPTO provider response received successfully")
     except Exception as exc:
         logger.exception("CRYPTO provider request failed")
+        if cached:
+            logger.warning("CRYPTO serving stale cached data after provider error")
+            return cached[1]
         raise RuntimeError(f"Crypto provider request failed for {','.join(ids)}: {exc}") from exc
 
+    _cache[cache_key] = (time.monotonic(), payload)
     return payload
-
 
 def _to_result(item: dict) -> dict:
     asset = _ID_TO_ASSET[item["id"]]
