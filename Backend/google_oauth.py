@@ -109,7 +109,10 @@ def _client_config() -> dict[str, Any]:
 
 
 def _redirect_uri() -> str:
-    return "https://wham-charity-reborn.ngrok-free.dev/api/google/callback"
+    return os.environ.get(
+        "GOOGLE_REDIRECT_URI",
+        "http://127.0.0.1:8000/api/google/callback",
+    )
 
 def _fernet() -> Fernet:
     secret = os.getenv("GOOGLE_TOKEN_ENCRYPTION_KEY", "").strip()
