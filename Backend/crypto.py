@@ -95,10 +95,12 @@ def _to_result(item: dict) -> dict:
 def _fetch_asset(asset: str) -> dict:
     asset = _normalize_crypto(asset)
     config = SUPPORTED_CRYPTO[asset]
-    payload = _request_markets([config["id"]])
-    if not payload:
+    all_ids = [c["id"] for c in SUPPORTED_CRYPTO.values()]
+    payload = _request_markets(all_ids)
+    match = next((item for item in payload if item["id"] == config["id"]), None)
+    if not match:
         raise RuntimeError(f"Crypto provider returned no data for {asset}")
-    return _to_result(payload[0])
+    return _to_result(match)
 
 
 def get_crypto(asset: str) -> dict:
