@@ -233,9 +233,10 @@ def create_google_services_authorization_url(user_email: str) -> str:
     code_verifier = secrets.token_urlsafe(64)[:128]
 
     conn.execute(
-        "DELETE FROM google_oauth_states WHERE created_at < ?",
-        (now - 600,),
-    )
+    "DELETE FROM google_oauth_states WHERE created_at < ?",
+    (str(now - 600),),
+)
+    
     conn.execute(
         """
         INSERT INTO google_oauth_states
