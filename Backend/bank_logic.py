@@ -7,29 +7,101 @@ it's pure logic, so it can be reused by the console app, the Streamlit
 app, or anything else that wants to talk to the same database.
 """
 
-import sqlite3
 import random
 import hashlib
 import os
+import re
 from datetime import datetime
 from logger import logger
 
+import psycopg2
+import psycopg2.extras
 
 
-DB_FILE = "banking.db"
+# ---------------------------------------------------------------------------
+# Database connection
+#
+# This app used to store everything in a local SQLite file (banking.db).
+# That worked locally, but on Render (and most PaaS hosts) the filesystem
+# is ephemeral: every new deploy wipes the file, silently deleting every
+# user/account/transaction. We now connect to a persistent, hosted Postgres
+# database (Neon) instead, via the DATABASE_URL environment variable.
+#
+# To avoid rewriting every "?"-placeholder query across the codebase, this
+# module exposes a thin compatibility layer that mimics the small slice of
+# the sqlite3 API this project actually uses: conn.execute(sql, params),
+# conn.cursor(), cursor.execute(...), cursor.fetchone()/.fetchall(), and
+# cursor.lastrowid. Rows behave like dicts (support both row['col'] and
+# dict(row)), matching how the rest of the code already reads them.
+# ---------------------------------------------------------------------------
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+_PLACEHOLDER_RE = re.compile(r"\?")
+
+
+def _translate_sql(sql: str) -> str:
+    """Translate sqlite3-style '?' positional placeholders to psycopg2's '%s'."""
+    return _PLACEHOLDER_RE.sub("%s", sql)
+
+
+class _CompatCursor:
+    def __init__(self, pg_cursor):
+        self._cursor = pg_cursor
+
+    def execute(self, sql, params=()):
+        self._cursor.execute(_translate_sql(sql), params)
+        return self
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    @property
+    def lastrowid(self):
+        # Works immediately after an INSERT into a table with a SERIAL
+        # column, since Postgres tracks the last sequence value obtained
+        # via nextval() in the current session.
+        self._cursor.execute("SELECT lastval()")
+        return self._cursor.fetchone()["lastval"]
+
+
+class _CompatConnection:
+    def __init__(self, pg_conn):
+        self._conn = pg_conn
+
+    def execute(self, sql, params=()):
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(_translate_sql(sql), params)
+        return _CompatCursor(cur)
+
+    def cursor(self):
+        return _CompatCursor(self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor))
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if not DATABASE_URL:
+        raise RuntimeError(
+            "DATABASE_URL environment variable is not set. "
+            "Set it to your Neon Postgres connection string."
+        )
+    pg_conn = psycopg2.connect(DATABASE_URL)
+    return _CompatConnection(pg_conn)
 
 
 def init_db():
     conn = get_connection()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS accounts (
-            account_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id SERIAL PRIMARY KEY,
             account_number TEXT NOT NULL UNIQUE,
             name TEXT NOT NULL,
             balance REAL NOT NULL DEFAULT 0,
@@ -38,7 +110,7 @@ def init_db():
     """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
-            transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id SERIAL PRIMARY KEY,
             account_id INTEGER NOT NULL,
             type TEXT NOT NULL,
             amount REAL NOT NULL,
@@ -49,7 +121,7 @@ def init_db():
     """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id SERIAL PRIMARY KEY,
             email TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
             salt TEXT NOT NULL,
@@ -58,7 +130,7 @@ def init_db():
     """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS google_connections (
-            connection_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            connection_id SERIAL PRIMARY KEY,
             user_email TEXT NOT NULL,
             provider TEXT NOT NULL,
             google_email TEXT NOT NULL,
@@ -83,7 +155,7 @@ def init_db():
     # and upgraded with a conversation_id so old messages are preserved.
     conn.execute("""
         CREATE TABLE IF NOT EXISTS conversations (
-            conversation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             agent_key TEXT NOT NULL,
             title TEXT NOT NULL DEFAULT 'New conversation',
@@ -94,7 +166,7 @@ def init_db():
     """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS chat_history (
-            message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id SERIAL PRIMARY KEY,
             conversation_id INTEGER,
             user_id INTEGER NOT NULL,
             agent_key TEXT NOT NULL,
@@ -106,9 +178,9 @@ def init_db():
         )
     """)
 
-    chat_columns = {row[1] for row in conn.execute("PRAGMA table_info(chat_history)").fetchall()}
-    if "conversation_id" not in chat_columns:
-        conn.execute("ALTER TABLE chat_history ADD COLUMN conversation_id INTEGER")
+    conn.execute("""
+        ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS conversation_id INTEGER
+    """)
 
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_conversations_user_agent_updated
@@ -131,16 +203,16 @@ def init_db():
         GROUP BY user_id, agent_key
     """).fetchall()
     for group in legacy_groups:
-        user_id = int(group[0])
-        agent_key = str(group[1])
-        first_message_id = int(group[2])
+        user_id = int(group["user_id"])
+        agent_key = str(group["agent_key"])
+        first_message_id = int(group["first_message_id"])
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        conn.execute("""
+        insert_cursor = conn.execute("""
             INSERT INTO conversations
                 (user_id, agent_key, title, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?)
         """, (user_id, agent_key, "Previous conversation", now, now))
-        conversation_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conversation_id = insert_cursor.lastrowid
         conn.execute("""
             UPDATE chat_history
             SET conversation_id = ?
@@ -149,11 +221,12 @@ def init_db():
 
     # Backward-compatible migration for databases created before user_id
     # was added to the OAuth-state table.
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(google_oauth_states)").fetchall()}
-    if "user_id" not in columns:
-        conn.execute("ALTER TABLE google_oauth_states ADD COLUMN user_id INTEGER")
-    if "code_verifier" not in columns:
-        conn.execute("ALTER TABLE google_oauth_states ADD COLUMN code_verifier TEXT")
+    conn.execute("""
+        ALTER TABLE google_oauth_states ADD COLUMN IF NOT EXISTS user_id INTEGER
+    """)
+    conn.execute("""
+        ALTER TABLE google_oauth_states ADD COLUMN IF NOT EXISTS code_verifier TEXT
+    """)
 
     # Backfill existing states where possible. Case-insensitive match so
     # accounts created before email normalization still backfill correctly.
@@ -341,8 +414,8 @@ class Bank:
         # 2. Log the transaction (Matching your exact schema)
         new_balance = acc.balance + amount
         conn.execute(
-            "INSERT INTO transactions (account_id, type, amount, balance_after, timestamp) VALUES (?, ?, ?, ?, datetime('now'))",
-            (acc.account_id, "Deposit", amount, new_balance)
+            "INSERT INTO transactions (account_id, type, amount, balance_after, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (acc.account_id, "Deposit", amount, new_balance, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         )
         
         conn.commit()
@@ -365,8 +438,8 @@ class Bank:
         # 2. Log the transaction (Matching your exact schema)
         new_balance = acc.balance - amount
         conn.execute(
-            "INSERT INTO transactions (account_id, type, amount, balance_after, timestamp) VALUES (?, ?, ?, ?, datetime('now'))",
-            (acc.account_id, "Withdraw", amount, new_balance)
+            "INSERT INTO transactions (account_id, type, amount, balance_after, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (acc.account_id, "Withdraw", amount, new_balance, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         )
         
         conn.commit()

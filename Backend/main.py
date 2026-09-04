@@ -77,8 +77,6 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "https://wham-charity-reborn.ngrok-free.dev",
-        "https://apex-capital-bank-nine.vercel.app",
-        
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -615,7 +613,7 @@ def create_conversation(req: ConversationCreate):
 
     conn = bank_logic.get_connection()
     try:
-        conn.execute(
+        insert_cursor = conn.execute(
             """
             INSERT INTO conversations
                 (user_id, agent_key, title, created_at, updated_at)
@@ -623,7 +621,7 @@ def create_conversation(req: ConversationCreate):
             """,
             (user_id, agent_key, title, now, now),
         )
-        conversation_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conversation_id = insert_cursor.lastrowid
         conn.commit()
     finally:
         conn.close()
