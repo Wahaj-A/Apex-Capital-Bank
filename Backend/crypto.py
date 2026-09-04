@@ -1,7 +1,7 @@
 """Live cryptocurrency service for the five supported assets.
 
 Primary provider: CoinGecko public markets endpoint.
-Fallback provider: CoinCap public assets endpoint when CoinGecko rate-limits
+Fallback provider: CoinPaprika public tickers endpoint when CoinGecko rate-limits
 or is temporarily unavailable.
 
 The service keeps a short in-process cache so repeated frontend polling does
@@ -81,41 +81,48 @@ def _request_coingecko(ids: list[str]) -> list[dict]:
     return payload
 
 
-def _request_coincap(ids: list[str]) -> list[dict]:
-    # CoinCap uses asset IDs rather than CoinGecko IDs.
-    coincap_ids = {
-        "bitcoin": "bitcoin",
-        "ethereum": "ethereum",
-        "binancecoin": "binance-coin",
-        "solana": "solana",
-        "ripple": "xrp",
+def _request_coinpaprika(ids: list[str]) -> list[dict]:
+    # CoinPaprika provides a free public /tickers endpoint without requiring
+    # an API key. Fetch all active tickers in one request, then keep only the
+    # five supported assets.
+    paprika_ids = {
+        "bitcoin": "btc-bitcoin",
+        "ethereum": "eth-ethereum",
+        "binancecoin": "bnb-binance-coin",
+        "solana": "sol-solana",
+        "ripple": "xrp-xrp",
     }
-    requested = [coincap_ids[i] for i in ids]
-    url = "https://api.coincap.io/v2/assets?" + urlencode({"ids": ",".join(requested)})
+    requested = set(paprika_ids[i] for i in ids)
+    url = "https://api.coinpaprika.com/v1/tickers?" + urlencode({"quotes": "USD"})
     status, payload = _request_json(url)
-    if status != 200 or not isinstance(payload, dict):
-        raise RuntimeError(f"CoinCap returned HTTP {status}")
+    if status != 200 or not isinstance(payload, list):
+        raise RuntimeError(f"CoinPaprika returned HTTP {status}")
 
+    reverse = {v: k for k, v in paprika_ids.items()}
     converted = []
-    for item in payload.get("data", []):
-        cc_id = item.get("id")
-        reverse = {v: k for k, v in coincap_ids.items()}
-        cg_id = reverse.get(cc_id)
-        if not cg_id:
+    for item in payload:
+        paprika_id = item.get("id")
+        if paprika_id not in requested:
             continue
+        cg_id = reverse[paprika_id]
+        usd = (item.get("quotes") or {}).get("USD") or {}
         converted.append({
             "id": cg_id,
-            "current_price": float(item.get("priceUsd") or 0),
-            "price_change_percentage_24h": float(item.get("changePercent24Hr") or 0),
+            "current_price": float(usd.get("price") or 0),
+            "price_change_percentage_24h": float(usd.get("percent_change_24h") or 0),
             "high_24h": 0,
             "low_24h": 0,
-            "total_volume": float(item.get("volumeUsd24Hr") or 0),
-            "last_updated": None,
+            "total_volume": float(usd.get("volume_24h") or 0),
+            "last_updated": item.get("last_updated"),
         })
 
-    if not converted:
-        raise RuntimeError("CoinCap returned no matching crypto data")
-    logger.info("CRYPTO fallback response received from CoinCap")
+    if len(converted) < len(requested):
+        missing = sorted(requested - {item.get("id") for item in payload})
+        logger.warning("CRYPTO CoinPaprika returned incomplete data; missing %s", missing)
+        if not converted:
+            raise RuntimeError("CoinPaprika returned no matching crypto data")
+
+    logger.info("CRYPTO fallback response received from CoinPaprika")
     return converted
 
 
@@ -135,7 +142,7 @@ def _request_markets(ids: list[str]) -> list[dict]:
         logger.warning("CRYPTO CoinGecko failed (%s); trying fallback provider", exc)
 
     try:
-        payload = _request_coincap(ids)
+        payload = _request_coinpaprika(ids)
         _cache_set(cache_key, payload)
         return payload
     except Exception as fallback_exc:
@@ -143,7 +150,7 @@ def _request_markets(ids: list[str]) -> list[dict]:
         if stale:
             logger.warning("CRYPTO serving stale cached data after provider failures")
             return stale[1]
-        logger.exception("CRYPTO fallback provider request failed")
+        logger.exception("CRYPTO CoinPaprika fallback request failed")
         raise RuntimeError(
             f"Crypto providers are temporarily unavailable for {','.join(ids)}: {fallback_exc}"
         ) from fallback_exc
@@ -163,7 +170,7 @@ def _to_result(item: dict) -> dict:
         "volume_24h": float(item.get("total_volume") or 0),
         "quote_volume_24h_usd": float(item.get("total_volume") or 0),
         "updated_at": item.get("last_updated"),
-        "source": "CoinGecko" if item.get("last_updated") else "CoinCap",
+        "source": "CoinGecko" if item.get("last_updated") else "CoinPaprika",
     }
 
 

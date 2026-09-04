@@ -6,7 +6,7 @@ repeated requests from the frontend and to reduce cloud-hosting rate limits.
 """
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 import json
 import time
 from logger import logger
@@ -125,16 +125,46 @@ def _fetch_all_cities_from_provider() -> list[dict]:
     url = "https://api.open-meteo.com/v1/forecast?" + urlencode(params)
     request = Request(url, headers={"User-Agent": "Apex-Capital-Bank-Weather/1.0"})
 
-    try:
-        with urlopen(request, timeout=15) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        logger.info("WEATHER provider response received for all five cities")
-    except HTTPError as exc:
-        logger.warning("WEATHER provider HTTP %s", exc.code)
-        raise
-    except Exception:
-        logger.exception("WEATHER provider request failed")
-        raise
+    last_error = None
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=15) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            logger.info("WEATHER provider response received for all five cities")
+            break
+        except HTTPError as exc:
+            last_error = exc
+            if exc.code == 429 and attempt < 2:
+                retry_after = exc.headers.get("Retry-After")
+                try:
+                    delay = min(max(float(retry_after), 1.0), 30.0) if retry_after else (2 ** attempt)
+                except (TypeError, ValueError):
+                    delay = 2 ** attempt
+                logger.warning("WEATHER provider HTTP 429; retrying in %.1fs", delay)
+                time.sleep(delay)
+                continue
+            logger.warning("WEATHER provider HTTP %s", exc.code)
+            raise
+        except URLError as exc:
+            last_error = exc
+            if attempt < 2:
+                delay = 2 ** attempt
+                logger.warning("WEATHER provider network/DNS error; retrying in %ss: %s", delay, exc.reason)
+                time.sleep(delay)
+                continue
+            logger.exception("WEATHER provider network request failed")
+            raise
+        except Exception as exc:
+            last_error = exc
+            if attempt < 2:
+                delay = 2 ** attempt
+                logger.warning("WEATHER provider error; retrying in %ss: %s", delay, exc)
+                time.sleep(delay)
+                continue
+            logger.exception("WEATHER provider request failed")
+            raise
+    else:
+        raise RuntimeError("Weather provider request failed after retries") from last_error
 
     # Open-Meteo returns a list for multiple coordinate pairs.
     if not isinstance(payload, list):
