@@ -70,13 +70,12 @@ async def request_logging_middleware(request: Request, call_next):
         raise
 
 
-# Configure CORS so the React frontend can talk to this backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "https://wham-charity-reborn.ngrok-free.dev",
+        "https://apex-capital-bank-nine.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
