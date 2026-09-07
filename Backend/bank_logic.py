@@ -76,11 +76,11 @@ class _CompatConnection:
         cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(_translate_sql(sql), params)
         return _CompatCursor(cur)
-    
+
     def executemany(self, sql, seq_of_params):
-    cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.executemany(_translate_sql(sql), list(seq_of_params))
-    return _CompatCursor(cur)
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.executemany(_translate_sql(sql), list(seq_of_params))
+        return _CompatCursor(cur)
 
 
     def cursor(self):
