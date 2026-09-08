@@ -78,6 +78,8 @@ def _request_coingecko(ids: list[str]) -> list[dict]:
     if status != 200 or not isinstance(payload, list):
         raise RuntimeError(f"CoinGecko returned HTTP {status}")
     logger.info("CRYPTO provider response received from CoinGecko")
+    for item in payload:
+        item["source"] = "CoinGecko"
     return payload
 
 
@@ -110,10 +112,11 @@ def _request_coinpaprika(ids: list[str]) -> list[dict]:
             "id": cg_id,
             "current_price": float(usd.get("price") or 0),
             "price_change_percentage_24h": float(usd.get("percent_change_24h") or 0),
-            "high_24h": 0,
-            "low_24h": 0,
+            "high_24h": float(usd.get("price") or 0),
+            "low_24h": float(usd.get("price") or 0),
             "total_volume": float(usd.get("volume_24h") or 0),
             "last_updated": item.get("last_updated"),
+            "source": "CoinPaprika",
         })
 
     if len(converted) < len(requested):
@@ -170,7 +173,7 @@ def _to_result(item: dict) -> dict:
         "volume_24h": float(item.get("total_volume") or 0),
         "quote_volume_24h_usd": float(item.get("total_volume") or 0),
         "updated_at": item.get("last_updated"),
-        "source": "CoinGecko" if item.get("last_updated") else "CoinPaprika",
+        "source": item.get("source", "CoinGecko"),
     }
 
 

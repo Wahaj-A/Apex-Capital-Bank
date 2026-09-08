@@ -2438,7 +2438,7 @@ function CryptoPage({ email }) {
                     <span className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-xl font-black">{CRYPTO_ICONS[selectedCrypto.name] || '$'}</span>
                     <div>
                       <h3 className="text-2xl font-black text-slate-900">{selectedCrypto.name}</h3>
-                      <p className="text-xs text-slate-400 font-semibold mt-1">{selectedCrypto.symbol}/USDT · Live data from Binance</p>
+                      <p className="text-xs text-slate-400 font-semibold mt-1">{selectedCrypto.symbol}/USDT · Live market data</p>
                     </div>
                   </div>
                 </div>
