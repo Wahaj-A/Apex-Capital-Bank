@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 from zoneinfo import ZoneInfo
 
 from google import genai
+from gemini_retry import generate_content_with_retry
 from google.genai import types
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -326,7 +327,7 @@ class CalendarAgent:
             parts=[types.Part(text=current_context + "\nUser request:\n" + user_text.strip())],
         ))
 
-        response = client.models.generate_content(
+        response = generate_content_with_retry(client,
             model="gemini-3.5-flash-lite",
             contents=contents,
             config=types.GenerateContentConfig(

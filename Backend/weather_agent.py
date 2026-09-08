@@ -1,6 +1,7 @@
 """AI weather agent using Gemini function calling."""
 import json
 from google import genai
+from gemini_retry import generate_content_with_retry
 from google.genai import types
 
 from weather import SUPPORTED_CITIES, get_weather
@@ -73,7 +74,7 @@ def ask_weather(user_text: str, history=None, api_key: str = None) -> str:
         parts=[types.Part(text=user_text)],
     ))
 
-    response = client.models.generate_content(
+    response = generate_content_with_retry(client,
         model="gemini-3.5-flash-lite",
         contents=contents,
         config=types.GenerateContentConfig(

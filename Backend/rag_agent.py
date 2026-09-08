@@ -23,6 +23,7 @@ import os
 import re
 from dotenv import load_dotenv
 from google import genai
+from gemini_retry import generate_content_with_retry
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from logger import logger
@@ -119,7 +120,7 @@ def ask_bank_policy(user_question, history=None):
     """
 
     # Step C: Generate the final response using Gemini (unchanged)
-    response = client.models.generate_content(
+    response = generate_content_with_retry(client,
         model="gemini-3.5-flash-lite",
         contents=prompt,
     )

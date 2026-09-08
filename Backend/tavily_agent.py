@@ -4,6 +4,7 @@ import os
 from typing import Any, Dict, List
 
 from google import genai
+from gemini_retry import generate_content_with_retry
 
 from tavily import TavilyClient
 
@@ -72,7 +73,7 @@ class TavilySearchAgent:
                         f"TAVILY SUMMARY:\n{summary}\n\n"
                         f"SEARCH RESULTS:\n{source_context}"
                     )
-                    response_ai = client.models.generate_content(
+                    response_ai = generate_content_with_retry(client,
                         model=os.getenv("WEB_SEARCH_MODEL", "gemini-3.5-flash-lite"),
                         contents=prompt,
                     )

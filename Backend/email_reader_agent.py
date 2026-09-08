@@ -8,6 +8,7 @@ from email.message import Message
 from typing import Any, Dict, List
 
 from google import genai
+from gemini_retry import generate_content_with_retry
 from google.genai import types
 from googleapiclient.discovery import build
 
@@ -118,7 +119,7 @@ class EmailReaderAgent:
         )
         try:
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
+            response = generate_content_with_retry(client,
                 model=os.getenv("EMAIL_READER_MODEL", "gemini-3.5-flash-lite"),
                 contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
             )

@@ -5,6 +5,7 @@ import smtplib
 from email.message import EmailMessage
 
 from google import genai
+from gemini_retry import generate_content_with_retry
 from google.genai import types
 
 
@@ -69,7 +70,7 @@ def create_draft(user_text: str, api_key: str, history=None) -> dict:
             contents.append(types.Content(role=role, parts=[types.Part(text=text)]))
     contents.append(types.Content(role="user", parts=[types.Part(text=user_text)]))
 
-    response = client.models.generate_content(
+    response = generate_content_with_retry(client,
         model="gemini-3.5-flash-lite",
         contents=contents,
         config=types.GenerateContentConfig(

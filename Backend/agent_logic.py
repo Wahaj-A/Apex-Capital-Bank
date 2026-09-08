@@ -1,4 +1,5 @@
 from google import genai
+from gemini_retry import generate_content_with_retry
 from google.genai import types
 from logger import logger
 
@@ -156,7 +157,7 @@ def send_message(bank, api_key, history, user_text, user_account_id: int = None,
     if user_account_id:
         active_system_instruction += f"\n\nCURRENT LOGGED-IN USER ACCOUNT ID: {user_account_id}"
 
-    response = client.models.generate_content(
+    response = generate_content_with_retry(client,
         model=model,
         contents=contents,
         config=types.GenerateContentConfig(
