@@ -365,14 +365,15 @@ function useChatHistory(email, agentKey) {
 
   const selectConversation = async (id) => {
     const numericId = Number(id)
-    if (!numericId || numericId === conversationId) return
+    if (!numericId) return
     try {
-      if (conversationId && messages.length) {
+      if (conversationId && conversationId !== numericId && messages.length) {
         await api.saveConversationMessages(conversationId, normalizedEmail, messages)
       }
     } catch {
       // Keep navigation available even if a final persistence attempt fails.
     }
+    setMessages([])
     setLoaded(false)
     setConversationId(numericId)
   }
