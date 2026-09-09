@@ -213,16 +213,28 @@ def _parse_met_city(city: str, payload: dict) -> dict:
             continue
         data = item.get("data", {})
         instant = data.get("instant", {}).get("details", {})
-        next_hour = data.get("next_1_hours", {})
-        summary = next_hour.get("summary", {})
+        # MET Norway only provides hourly-resolution "next_1_hours" data for
+        # roughly the next 2-3 days; further out, only the coarser
+        # "next_6_hours" / "next_12_hours" blocks exist. Falling back through
+        # them means days 4-5 of the forecast get a real condition/precip
+        # value instead of nothing.
+        next_block = (
+            data.get("next_1_hours")
+            or data.get("next_6_hours")
+            or data.get("next_12_hours")
+            or {}
+        )
+        summary = next_block.get("summary", {})
         symbol = summary.get("symbol_code")
-        precip = next_hour.get("details", {}).get("precipitation_amount", 0.0)
+        precip = next_block.get("details", {}).get("precipitation_amount", 0.0)
+        precip_probability = next_block.get("details", {}).get("probability_of_precipitation")
         rows.append({
             "time": dt,
             "temperature": instant.get("air_temperature"),
             "humidity": instant.get("relative_humidity"),
             "wind_speed": instant.get("wind_speed"),
             "precipitation": precip or 0.0,
+            "precipitation_probability": precip_probability,
             "symbol": symbol,
         })
 
@@ -251,13 +263,23 @@ def _parse_met_city(city: str, payload: dict) -> dict:
             day_rows,
             key=lambda r: abs((r["time"].hour + r["time"].minute / 60.0) - 12.0),
         )
+        # If the row closest to noon happens to lack a symbol (e.g. right at
+        # the edge of MET's forecast resolution), use the first row in the
+        # day that does have one rather than showing "Unknown".
+        symbol_source = noon if noon.get("symbol") else next(
+            (r for r in day_rows if r.get("symbol")), noon
+        )
+        probabilities = [
+            r["precipitation_probability"] for r in day_rows
+            if isinstance(r.get("precipitation_probability"), (int, float))
+        ]
         forecast.append({
             "date": date,
-            "weather_code": noon.get("symbol"),
-            "condition": _met_condition(noon.get("symbol")),
+            "weather_code": symbol_source.get("symbol"),
+            "condition": _met_condition(symbol_source.get("symbol")),
             "max_temperature": max(temps) if temps else None,
             "min_temperature": min(temps) if temps else None,
-            "precipitation_probability": None,
+            "precipitation_probability": max(probabilities) if probabilities else None,
             "precipitation": round(precip, 2),
             "max_wind_speed": max(winds) if winds else None,
             "sunrise": None,
@@ -269,10 +291,13 @@ def _parse_met_city(city: str, payload: dict) -> dict:
         "city": city,
         "latitude": coords["latitude"],
         "longitude": coords["longitude"],
-        "timezone": str(current_row["time"].tzinfo),
+        "timezone": "Asia/Karachi",
         "updated_at": current_row["time"].isoformat(),
         "current": {
             "temperature": current_row.get("temperature"),
+            # MET Norway doesn't provide an apparent/"feels like" temperature.
+            # Falling back to the actual temperature avoids the frontend
+            # rendering a misleading 0°C for missing data.
             "feels_like": current_row.get("temperature"),
             "humidity": current_row.get("humidity"),
             "wind_speed": current_row.get("wind_speed"),
