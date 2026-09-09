@@ -1241,7 +1241,7 @@ function Dashboard({ email, onNavigate }) {
               <div className="mt-5 grid grid-cols-2 gap-2">
                 <div className="rounded-xl bg-slate-50 p-3">
                   <div className="text-[9px] font-black uppercase text-slate-400">Feels</div>
-                  <div className="mt-1 text-xs font-black text-slate-800">{Math.round(lahoreWeather.current.feels_like)}°C</div>
+                  <div className="mt-1 text-xs font-black text-slate-800">{formatTemp(lahoreWeather.current.feels_like)}°C</div>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
                   <div className="text-[9px] font-black uppercase text-slate-400">Wind</div>
@@ -2008,6 +2008,12 @@ const WEATHER_ICONS = {
   'Thunderstorm with heavy hail': '⛈️',
 }
 
+// Rounds a temperature-like value for display, without turning missing
+// data (null/undefined) into a misleading "0°" via Math.round(null) === 0.
+function formatTemp(value) {
+  return (value === null || value === undefined || Number.isNaN(value)) ? '—' : Math.round(value)
+}
+
 function WeatherIcon({ condition }) {
   return <span className="text-3xl" aria-hidden="true">{WEATHER_ICONS[condition] || '🌤️'}</span>
 }
@@ -2164,7 +2170,7 @@ function WeatherPage({ email }) {
                   </div>
                   <div className="text-xs font-bold text-slate-500 mt-1">{city.current.condition}</div>
                   <div className="text-[10px] font-bold text-slate-400 mt-4">
-                    Feels {Math.round(city.current.feels_like)}° · Wind {Math.round(city.current.wind_speed)} km/h
+                    Feels {formatTemp(city.current.feels_like)}° · Wind {formatTemp(city.current.wind_speed)} km/h
                   </div>
                 </button>
               ))}
@@ -2179,7 +2185,7 @@ function WeatherPage({ email }) {
                     <h3 className="text-2xl font-black text-slate-900">{selectedWeather.city}</h3>
                   </div>
                   <p className="text-xs text-slate-400 font-semibold mt-1">
-                    {selectedWeather.timezone} · Live data from Open-Meteo
+                    {selectedWeather.timezone} · Live data from {selectedWeather.source || 'live provider'}
                   </p>
                 </div>
                 <div className="text-right">
@@ -2194,7 +2200,7 @@ function WeatherPage({ email }) {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
                 {[
-                  ['Feels Like', `${Math.round(selectedWeather.current.feels_like)}°C`],
+                  ['Feels Like', `${formatTemp(selectedWeather.current.feels_like)}°C`],
                   ['Humidity', `${selectedWeather.current.humidity}%`],
                   ['Wind', `${Math.round(selectedWeather.current.wind_speed)} km/h`],
                   ['Rain Now', `${selectedWeather.current.precipitation} mm`],

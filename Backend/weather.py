@@ -273,7 +273,7 @@ def _parse_met_city(city: str, payload: dict) -> dict:
         "updated_at": current_row["time"].isoformat(),
         "current": {
             "temperature": current_row.get("temperature"),
-            "feels_like": None,
+            "feels_like": current_row.get("temperature"),
             "humidity": current_row.get("humidity"),
             "wind_speed": current_row.get("wind_speed"),
             "precipitation": current_row.get("precipitation", 0.0),
