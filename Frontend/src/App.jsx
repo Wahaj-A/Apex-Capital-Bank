@@ -2223,7 +2223,7 @@ function WeatherPage({ email }) {
                       {Math.round(day.max_temperature)}° / {Math.round(day.min_temperature)}°
                     </div>
                     <div className="text-[10px] font-bold text-slate-400 mt-2">
-                      Rain {day.precipitation_probability}% · {day.precipitation} mm
+                      Rain {day.precipitation_probability ?? '—'}% · {day.precipitation} mm
                     </div>
                   </div>
                 ))}
